@@ -41,14 +41,12 @@ local BankGlobals = {
     -- Auto Bank toggles
     isAutoBankingWeapons = false,
     isAutoBankingPets = false,
+    isAutoBankingAllWeapons = false, -- Bank tất cả weapons không cần điều kiện
+    isAutoBankingAllPets = false, -- Bank tất cả pets không cần điều kiện
     
-    -- Config cho weapons
+    -- Config cho weapons và pets (chỉ lưu min tier)
     weaponMinTier = 5, -- Tier tối thiểu để bank (mặc định T5)
-    weaponPerkThresholds = {}, -- Ngưỡng perk cho weapons
-    
-    -- Config cho pets
     petMinTier = 5, -- Tier tối thiểu để bank (mặc định T5)
-    petPerkThresholds = {}, -- Ngưỡng perk cho pets
     
     -- Statistics
     totalWeaponsBanked = 0,
@@ -160,33 +158,6 @@ local function getWeaponTier(weaponItem)
     return weaponItem.Tier.Value
 end
 
--- Fetch weapon perk list
-local function getWeaponPerksList()
-    local weaponPerks = {}
-    
-    for perkKey, perkData in pairs(bQ) do
-        -- ✅ Chỉ lấy perks có thể xuất hiện trên vũ khí
-        local canAppearOnWeapon = not perkData.ArmorOnly and not perkData.PetOnly
-        
-        if canAppearOnWeapon and not perkData.Disabled then
-            local statRange = perkData.StatRange
-            
-            if statRange then
-                table.insert(weaponPerks, {
-                    key = perkKey,
-                    name = perkData.DisplayName,
-                    desc = perkData.DisplayDesc,
-                    min = statRange[1] * 100,
-                    max = statRange[2] * 100
-                })
-            end
-        end
-    end
-    
-    table.sort(weaponPerks, function(a, b) return a.name < b.name end)
-    return weaponPerks
-end
-
 -- Kiểm tra weapon có đáp ứng điều kiện bank không
 local function shouldBankWeapon(weaponItem)
     local itemData = bR[weaponItem.Name]
@@ -200,7 +171,7 @@ local function shouldBankWeapon(weaponItem)
         return false, string.format("Tier %d < min tier %d", tier or 0, BankGlobals.weaponMinTier)
     end
     
-    -- Kiểm tra perks
+    -- Kiểm tra perks (sử dụng Options từ main script)
     local hasValidPerk = false
     local bestPerkInfo = nil
     local shouldKeep = false
@@ -219,11 +190,10 @@ local function shouldBankWeapon(weaponItem)
                 if canAppearOnWeapon and statRange then
                     hasValidPerk = true
                     
-                    local threshold = BankGlobals.weaponPerkThresholds[perkName]
-                    if not threshold then
-                        threshold = 999
-                    else
-                        threshold = tonumber(threshold) or 999
+                    -- ✅ Lấy threshold từ Options (giống smartPerkSell)
+                    local threshold = 999
+                    if _G.Options and _G.Options[perkName] then
+                        threshold = tonumber(_G.Options[perkName].Value) or 999
                     end
                     
                     local perkPercent = math.round(perkValue * 100)
@@ -274,8 +244,16 @@ local function getAllWeaponsInInventory()
 end
 
 -- Bank một weapon
-local function bankWeapon(weaponItem)
-    local shouldBank, reason = shouldBankWeapon(weaponItem)
+local function bankWeapon(weaponItem, skipCheck)
+    local shouldBank, reason
+    
+    if skipCheck then
+        -- Không kiểm tra điều kiện, bank luôn
+        shouldBank = true
+        reason = "Auto bank all enabled"
+    else
+        shouldBank, reason = shouldBankWeapon(weaponItem)
+    end
     
     if not shouldBank then
         return false, reason
@@ -286,7 +264,9 @@ local function bankWeapon(weaponItem)
     if success then
         BankGlobals.totalWeaponsBanked = BankGlobals.totalWeaponsBanked + 1
         local itemData = bR[weaponItem.Name]
-        libNoti(string.format("✅ Banked weapon: %s | %s", itemData.DisplayKey or weaponItem.Name, reason), 2)
+        if not skipCheck then
+            libNoti(string.format("✅ Banked weapon: %s | %s", itemData.DisplayKey or weaponItem.Name, reason), 2)
+        end
     end
     
     return success, reason
@@ -316,32 +296,6 @@ local function getPetTier(petItem)
     return nil
 end
 
--- Fetch pet perk list
-local function getPetPerksList()
-    local petPerks = {}
-    
-    for perkKey, perkData in pairs(bQ) do
-        local canAppearOnPet = (not perkData.WeaponOnly and not perkData.ArmorOnly) or perkData.PetOnly
-        
-        if canAppearOnPet and not perkData.Disabled then
-            local statRange = perkData.PetStatRange or perkData.StatRange
-            
-            if statRange then
-                table.insert(petPerks, {
-                    key = perkKey,
-                    name = perkData.DisplayName,
-                    desc = perkData.DisplayDesc,
-                    min = statRange[1] * 100,
-                    max = statRange[2] * 100
-                })
-            end
-        end
-    end
-    
-    table.sort(petPerks, function(a, b) return a.name < b.name end)
-    return petPerks
-end
-
 -- Kiểm tra pet có đáp ứng điều kiện bank không
 local function shouldBankPet(petItem)
     local itemData = bR[petItem.Name]
@@ -355,10 +309,26 @@ local function shouldBankPet(petItem)
         return false, string.format("Tier %d < min tier %d", tier or 0, BankGlobals.petMinTier)
     end
     
-    -- Kiểm tra perks
+    -- Kiểm tra perks (lấy từ module Auto Hatch nếu có, hoặc từ config)
     local hasValidPerk = false
     local bestPerkInfo = nil
     local shouldKeep = false
+    
+    -- ✅ Fetch pet perk thresholds từ config đã load
+    local petPerkThresholds = {}
+    if _G.ConfigSystem and _G.ConfigSystem.lastLoadedConfig and _G.ConfigSystem.lastLoadedConfig.HatchGlobals then
+        local hatchConfig = _G.ConfigSystem.lastLoadedConfig.HatchGlobals
+        if hatchConfig.petPerkThresholds then
+            for key, value in pairs(hatchConfig.petPerkThresholds) do
+                -- Remove prefix "PetPerk_" if exists
+                local perkKey = key
+                if string.sub(key, 1, 8) == "PetPerk_" then
+                    perkKey = string.sub(key, 9)
+                end
+                petPerkThresholds[perkKey] = tonumber(value) or 999
+            end
+        end
+    end
     
     for _, child in ipairs(petItem:GetChildren()) do
         if child:IsA("StringValue") and child:FindFirstChild("PerkValue") then
@@ -374,12 +344,8 @@ local function shouldBankPet(petItem)
                 if canAppearOnPet and statRange then
                     hasValidPerk = true
                     
-                    local threshold = BankGlobals.petPerkThresholds[perkName]
-                    if not threshold then
-                        threshold = 999
-                    else
-                        threshold = tonumber(threshold) or 999
-                    end
+                    -- ✅ Lấy threshold từ petPerkThresholds (giống Auto Hatch)
+                    local threshold = petPerkThresholds[perkName] or 999
                     
                     local perkPercent = math.round(perkValue * 100)
                     local meetsThreshold = perkPercent >= threshold
@@ -429,8 +395,16 @@ local function getAllPetsInInventory()
 end
 
 -- Bank một pet
-local function bankPet(petItem)
-    local shouldBank, reason = shouldBankPet(petItem)
+local function bankPet(petItem, skipCheck)
+    local shouldBank, reason
+    
+    if skipCheck then
+        -- Không kiểm tra điều kiện, bank luôn
+        shouldBank = true
+        reason = "Auto bank all enabled"
+    else
+        shouldBank, reason = shouldBankPet(petItem)
+    end
     
     if not shouldBank then
         return false, reason
@@ -441,7 +415,9 @@ local function bankPet(petItem)
     if success then
         BankGlobals.totalPetsBanked = BankGlobals.totalPetsBanked + 1
         local itemData = bR[petItem.Name]
-        libNoti(string.format("✅ Banked pet: %s | %s", itemData.DisplayKey or petItem.Name, reason), 2)
+        if not skipCheck then
+            libNoti(string.format("✅ Banked pet: %s | %s", itemData.DisplayKey or petItem.Name, reason), 2)
+        end
     end
     
     return success, reason
@@ -453,45 +429,43 @@ local function startAutoBank()
         BankGlobals.sessionStartTime = tick()
     end
     
-    -- ✅ Auto Bank Weapons Listener
-    if BankGlobals.isAutoBankingWeapons then
-        InventoryItems.ChildAdded:Connect(function(item)
-            task.wait(0.1)
+    -- ✅ Listener chung cho cả weapons và pets
+    InventoryItems.ChildAdded:Connect(function(item)
+        task.wait(0.1)
+        
+        local itemData = bR[item.Name]
+        if not itemData then
+            return
+        end
+        
+        -- Kiểm tra Auto Bank Weapons
+        if itemData.Type == "Weapon" or itemData.Type == "Armor" then
+            local autoBankAllWeapons = _G.Toggles and _G.Toggles.AutoBankAllWeapons and _G.Toggles.AutoBankAllWeapons.Value or false
+            local autoBankWeapons = _G.Toggles and _G.Toggles.AutoBankWeapons and _G.Toggles.AutoBankWeapons.Value or false
             
-            local autoBankWeaponsEnabled = _G.Toggles and _G.Toggles.AutoBankWeapons and _G.Toggles.AutoBankWeapons.Value or false
-            
-            if not autoBankWeaponsEnabled then
-                return
+            if autoBankAllWeapons then
+                -- Bank tất cả weapons không cần kiểm tra
+                bankWeapon(item, true)
+            elseif autoBankWeapons then
+                -- Bank weapons có điều kiện
+                bankWeapon(item, false)
             end
+        end
+        
+        -- Kiểm tra Auto Bank Pets
+        if itemData.Type == "Pet" then
+            local autoBankAllPets = _G.Toggles and _G.Toggles.AutoBankAllPets and _G.Toggles.AutoBankAllPets.Value or false
+            local autoBankPets = _G.Toggles and _G.Toggles.AutoBankPets and _G.Toggles.AutoBankPets.Value or false
             
-            local itemData = bR[item.Name]
-            if not itemData or (itemData.Type ~= "Weapon" and itemData.Type ~= "Armor") then
-                return
+            if autoBankAllPets then
+                -- Bank tất cả pets không cần kiểm tra
+                bankPet(item, true)
+            elseif autoBankPets then
+                -- Bank pets có điều kiện
+                bankPet(item, false)
             end
-            
-            bankWeapon(item)
-        end)
-    end
-    
-    -- ✅ Auto Bank Pets Listener
-    if BankGlobals.isAutoBankingPets then
-        InventoryItems.ChildAdded:Connect(function(item)
-            task.wait(0.1)
-            
-            local autoBankPetsEnabled = _G.Toggles and _G.Toggles.AutoBankPets and _G.Toggles.AutoBankPets.Value or false
-            
-            if not autoBankPetsEnabled then
-                return
-            end
-            
-            local itemData = bR[item.Name]
-            if not itemData or itemData.Type ~= "Pet" then
-                return
-            end
-            
-            bankPet(item)
-        end)
-    end
+        end
+    end)
 end
 
 -- ==================== CONFIG FUNCTIONS ====================
@@ -551,8 +525,8 @@ local function createInventoryTab()
     
     -- Auto Bank Weapons Toggle
     local AutoBankWeaponsToggle = TabInventory:Toggle({
-        Title = "⚔️ Auto Bank Weapons",
-        Description = "Tự động bank weapons khi nhận được",
+        Title = "⚔️ Auto Bank Weapons (Smart)",
+        Description = "Tự động bank weapons đủ điều kiện khi nhận được",
         Default = false,
         Callback = function(state)
             if _G.Toggles and _G.Toggles.AutoBankWeapons then
@@ -561,9 +535,9 @@ local function createInventoryTab()
             BankGlobals.isAutoBankingWeapons = state
             
             if state then
-                libNoti("✅ Auto Bank Weapons đã BẬT", 2)
+                libNoti("✅ Auto Bank Weapons (Smart) đã BẬT", 2)
             else
-                libNoti("❌ Auto Bank Weapons đã TẮT", 2)
+                libNoti("❌ Auto Bank Weapons (Smart) đã TẮT", 2)
             end
         end
     })
@@ -585,37 +559,38 @@ local function createInventoryTab()
     })
     ConfigSystem.registerUIElement("BankWeaponMinTier", WeaponMinTierSlider)
     
-    TabInventory:Divider({ Text = "Weapon Perk Thresholds" })
+    -- ✅ Paragraph hướng dẫn
+    TabInventory:Paragraph({
+        Title = "ℹ️ Weapon Perk Settings",
+        Description = "Weapon perks sử dụng ngưỡng từ Smart T5 Auto Sell.\nĐể thay đổi, vào tab Auto Sell > Smart T5 Auto Sell."
+    })
     
-    -- ✅ Tạo slider cho từng weapon perk
-    local weaponPerks = getWeaponPerksList()
-    for _, perk in ipairs(weaponPerks) do
-        if not BankGlobals.weaponPerkThresholds[perk.key] then
-            BankGlobals.weaponPerkThresholds[perk.key] = math.round(perk.min)
-        end
-        
-        local slider = TabInventory:Slider({
-            Title = perk.name,
-            Description = perk.desc .. string.format(" (Range: %.1f%% - %.1f%%)", perk.min, perk.max),
-            Step = 1,
-            Value = {
-                Min = math.round(perk.min),
-                Max = math.round(perk.max),
-                Default = BankGlobals.weaponPerkThresholds[perk.key]
-            },
-            Callback = function(value)
-                BankGlobals.weaponPerkThresholds[perk.key] = value
+    -- Auto Bank All Weapons Toggle
+    local AutoBankAllWeaponsToggle = TabInventory:Toggle({
+        Title = "⚔️ Auto Bank ALL Weapons",
+        Description = "Bank TẤT CẢ weapons (bỏ qua mọi điều kiện)",
+        Default = false,
+        Callback = function(state)
+            if _G.Toggles and _G.Toggles.AutoBankAllWeapons then
+                _G.Toggles.AutoBankAllWeapons:SetValue(state)
             end
-        })
-        ConfigSystem.registerUIElement("BankWeaponPerk_" .. perk.key, slider)
-    end
+            BankGlobals.isAutoBankingAllWeapons = state
+            
+            if state then
+                libNoti("⚠️ Auto Bank ALL Weapons đã BẬT - Mọi weapon sẽ được bank!", 3)
+            else
+                libNoti("❌ Auto Bank ALL Weapons đã TẮT", 2)
+            end
+        end
+    })
+    ConfigSystem.registerUIElement("AutoBankAllWeapons", AutoBankAllWeaponsToggle)
     
     TabInventory:Divider({ Text = "Auto Bank Pets" })
     
     -- Auto Bank Pets Toggle
     local AutoBankPetsToggle = TabInventory:Toggle({
-        Title = "🐾 Auto Bank Pets",
-        Description = "Tự động bank pets khi nhận được",
+        Title = "🐾 Auto Bank Pets (Smart)",
+        Description = "Tự động bank pets đủ điều kiện khi nhận được",
         Default = false,
         Callback = function(state)
             if _G.Toggles and _G.Toggles.AutoBankPets then
@@ -624,9 +599,9 @@ local function createInventoryTab()
             BankGlobals.isAutoBankingPets = state
             
             if state then
-                libNoti("✅ Auto Bank Pets đã BẬT", 2)
+                libNoti("✅ Auto Bank Pets (Smart) đã BẬT", 2)
             else
-                libNoti("❌ Auto Bank Pets đã TẮT", 2)
+                libNoti("❌ Auto Bank Pets (Smart) đã TẮT", 2)
             end
         end
     })
@@ -648,30 +623,31 @@ local function createInventoryTab()
     })
     ConfigSystem.registerUIElement("BankPetMinTier", PetMinTierSlider)
     
-    TabInventory:Divider({ Text = "Pet Perk Thresholds" })
+    -- ✅ Paragraph hướng dẫn
+    TabInventory:Paragraph({
+        Title = "ℹ️ Pet Perk Settings",
+        Description = "Pet perks sử dụng ngưỡng từ Auto Hatch tab.\nĐể thay đổi, vào tab Auto Hatch > Smart Pet Keep Thresholds."
+    })
     
-    -- ✅ Tạo slider cho từng pet perk
-    local petPerks = getPetPerksList()
-    for _, perk in ipairs(petPerks) do
-        if not BankGlobals.petPerkThresholds[perk.key] then
-            BankGlobals.petPerkThresholds[perk.key] = math.round(perk.min)
-        end
-        
-        local slider = TabInventory:Slider({
-            Title = perk.name,
-            Description = perk.desc .. string.format(" (Range: %.1f%% - %.1f%%)", perk.min, perk.max),
-            Step = 1,
-            Value = {
-                Min = math.round(perk.min),
-                Max = math.round(perk.max),
-                Default = BankGlobals.petPerkThresholds[perk.key]
-            },
-            Callback = function(value)
-                BankGlobals.petPerkThresholds[perk.key] = value
+    -- Auto Bank All Pets Toggle
+    local AutoBankAllPetsToggle = TabInventory:Toggle({
+        Title = "🐾 Auto Bank ALL Pets",
+        Description = "Bank TẤT CẢ pets (bỏ qua mọi điều kiện)",
+        Default = false,
+        Callback = function(state)
+            if _G.Toggles and _G.Toggles.AutoBankAllPets then
+                _G.Toggles.AutoBankAllPets:SetValue(state)
             end
-        })
-        ConfigSystem.registerUIElement("BankPetPerk_" .. perk.key, slider)
-    end
+            BankGlobals.isAutoBankingAllPets = state
+            
+            if state then
+                libNoti("⚠️ Auto Bank ALL Pets đã BẬT - Mọi pet sẽ được bank!", 3)
+            else
+                libNoti("❌ Auto Bank ALL Pets đã TẮT", 2)
+            end
+        end
+    })
+    ConfigSystem.registerUIElement("AutoBankAllPets", AutoBankAllPetsToggle)
     
     TabInventory:Divider({ Text = "Manual Actions" })
     
@@ -684,7 +660,7 @@ local function createInventoryTab()
             local bankedCount = 0
             
             for _, weapon in ipairs(weapons) do
-                local success, reason = bankWeapon(weapon)
+                local success, reason = bankWeapon(weapon, false)
                 if success then
                     bankedCount = bankedCount + 1
                     task.wait(0.2)
@@ -708,7 +684,7 @@ local function createInventoryTab()
             local bankedCount = 0
             
             for _, pet in ipairs(pets) do
-                local success, reason = bankPet(pet)
+                local success, reason = bankPet(pet, false)
                 if success then
                     bankedCount = bankedCount + 1
                     task.wait(0.2)
@@ -719,6 +695,66 @@ local function createInventoryTab()
                 libNoti(string.format("✅ Đã bank %d pets!", bankedCount), 3)
             else
                 libNoti("⚠️ Không có pet nào đủ điều kiện để bank", 3)
+            end
+        end
+    })
+    
+    TabInventory:Divider({ Text = "Withdraw from Bank" })
+    
+    -- Button Withdraw All Weapons
+    TabInventory:Button({
+        Title = "⬇️ Withdraw All Weapons",
+        Description = "Rút tất cả weapons từ bank (double-click)",
+        Callback = function()
+            local BankItemsFolder = Profile:WaitForChild("Bank"):WaitForChild("Items")
+            local withdrawnCount = 0
+            
+            for _, item in ipairs(BankItemsFolder:GetChildren()) do
+                if item:IsA("Folder") then
+                    local itemData = bR[item.Name]
+                    if itemData and (itemData.Type == "Weapon" or itemData.Type == "Armor") then
+                        local success = withdrawFromBank(item, 1)
+                        if success then
+                            withdrawnCount = withdrawnCount + 1
+                            task.wait(0.2)
+                        end
+                    end
+                end
+            end
+            
+            if withdrawnCount > 0 then
+                libNoti(string.format("✅ Đã rút %d weapons từ bank!", withdrawnCount), 3)
+            else
+                libNoti("⚠️ Không có weapon nào trong bank", 3)
+            end
+        end
+    })
+    
+    -- Button Withdraw All Pets
+    TabInventory:Button({
+        Title = "⬇️ Withdraw All Pets",
+        Description = "Rút tất cả pets từ bank (double-click)",
+        Callback = function()
+            local BankItemsFolder = Profile:WaitForChild("Bank"):WaitForChild("Items")
+            local withdrawnCount = 0
+            
+            for _, item in ipairs(BankItemsFolder:GetChildren()) do
+                if item:IsA("Folder") then
+                    local itemData = bR[item.Name]
+                    if itemData and itemData.Type == "Pet" then
+                        local success = withdrawFromBank(item, 1)
+                        if success then
+                            withdrawnCount = withdrawnCount + 1
+                            task.wait(0.2)
+                        end
+                    end
+                end
+            end
+            
+            if withdrawnCount > 0 then
+                libNoti(string.format("✅ Đã rút %d pets từ bank!", withdrawnCount), 3)
+            else
+                libNoti("⚠️ Không có pet nào trong bank", 3)
             end
         end
     })
@@ -773,28 +809,15 @@ function Module:Init()
     -- Start auto bank listeners
     startAutoBank()
     
-    -- ✅ Hook vào ConfigSystem để save/load BankGlobals
+    -- ✅ Hook vào ConfigSystem để save/load BankGlobals (chỉ min tiers)
     local originalGetConfigData = ConfigSystem.getConfigData
     ConfigSystem.getConfigData = function()
         local data = originalGetConfigData()
         
-        -- Chuyển đổi weapon perk thresholds
-        local weaponPerkConfig = {}
-        for perkKey, value in pairs(BankGlobals.weaponPerkThresholds) do
-            weaponPerkConfig["BankWeaponPerk_" .. perkKey] = value
-        end
-        
-        -- Chuyển đổi pet perk thresholds
-        local petPerkConfig = {}
-        for perkKey, value in pairs(BankGlobals.petPerkThresholds) do
-            petPerkConfig["BankPetPerk_" .. perkKey] = value
-        end
-        
+        -- Chỉ lưu min tiers (perk thresholds lấy từ Options và HatchGlobals)
         data.BankGlobals = {
             weaponMinTier = BankGlobals.weaponMinTier,
-            petMinTier = BankGlobals.petMinTier,
-            weaponPerkThresholds = weaponPerkConfig,
-            petPerkThresholds = petPerkConfig
+            petMinTier = BankGlobals.petMinTier
         }
         
         return data
@@ -804,6 +827,12 @@ function Module:Init()
     ConfigSystem.loadConfigData = function(data)
         originalLoadConfigData(data)
         
+        -- ✅ Lưu config để shouldBankPet có thể truy cập
+        if not _G.ConfigSystem then
+            _G.ConfigSystem = {}
+        end
+        _G.ConfigSystem.lastLoadedConfig = data
+        
         if data and data.BankGlobals then
             -- Load min tiers
             if data.BankGlobals.weaponMinTier then
@@ -812,30 +841,6 @@ function Module:Init()
             
             if data.BankGlobals.petMinTier then
                 BankGlobals.petMinTier = data.BankGlobals.petMinTier
-            end
-            
-            -- Load weapon perk thresholds
-            if data.BankGlobals.weaponPerkThresholds then
-                for key, value in pairs(data.BankGlobals.weaponPerkThresholds) do
-                    local numValue = tonumber(value) or value
-                    local perkKey = key
-                    if string.sub(key, 1, 17) == "BankWeaponPerk_" then
-                        perkKey = string.sub(key, 18)
-                    end
-                    BankGlobals.weaponPerkThresholds[perkKey] = numValue
-                end
-            end
-            
-            -- Load pet perk thresholds
-            if data.BankGlobals.petPerkThresholds then
-                for key, value in pairs(data.BankGlobals.petPerkThresholds) do
-                    local numValue = tonumber(value) or value
-                    local perkKey = key
-                    if string.sub(key, 1, 14) == "BankPetPerk_" then
-                        perkKey = string.sub(key, 15)
-                    end
-                    BankGlobals.petPerkThresholds[perkKey] = numValue
-                end
             end
             
             -- Update UI sliders
@@ -856,28 +861,6 @@ function Module:Init()
                     pcall(function()
                         petMinTierSlider:Set(BankGlobals.petMinTier)
                     end)
-                end
-                
-                -- Update weapon perk sliders
-                for perkKey, value in pairs(BankGlobals.weaponPerkThresholds) do
-                    local sliderKey = "BankWeaponPerk_" .. perkKey
-                    local slider = ConfigSystem.UIElements[sliderKey]
-                    if slider and slider.Set then
-                        pcall(function()
-                            slider:Set(tonumber(value))
-                        end)
-                    end
-                end
-                
-                -- Update pet perk sliders
-                for perkKey, value in pairs(BankGlobals.petPerkThresholds) do
-                    local sliderKey = "BankPetPerk_" .. perkKey
-                    local slider = ConfigSystem.UIElements[sliderKey]
-                    if slider and slider.Set then
-                        pcall(function()
-                            slider:Set(tonumber(value))
-                        end)
-                    end
                 end
             end)
         end
