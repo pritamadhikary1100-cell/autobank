@@ -1,6 +1,6 @@
     -- ==================== AUTO BANK MODULE ====================
     -- Chức năng: Tự động bỏ vũ khí và pet có giá trị vào Bank
-    -- Requirements: WindUI, global variables from main script
+    -- Requirements: WindUI, global variables from main scriptxxxxxxxxxxxx
     -- ===========================================================
 
     local Module = {}
@@ -862,7 +862,7 @@
                     BankGlobals.isAutoBankingAllPets = data.BankGlobals.isAutoBankingAllPets
                 end
                 
-                -- Update UI sliders
+                -- ✅ Update UI elements (sliders và toggles)
                 task.spawn(function()
                     task.wait(0.5)
                     
@@ -879,6 +879,19 @@
                     if petMinTierSlider and petMinTierSlider.Set then
                         pcall(function()
                             petMinTierSlider:Set(BankGlobals.petMinTier)
+                        end)
+                    end
+                    
+                    -- ✅ THÊM: Update toggles
+                    if _G.Toggles.AutoBankAllWeapons then
+                        pcall(function()
+                            _G.Toggles.AutoBankAllWeapons:SetValue(BankGlobals.isAutoBankingAllWeapons)
+                        end)
+                    end
+                    
+                    if _G.Toggles.AutoBankAllPets then
+                        pcall(function()
+                            _G.Toggles.AutoBankAllPets:SetValue(BankGlobals.isAutoBankingAllPets)
                         end)
                     end
                 end)
