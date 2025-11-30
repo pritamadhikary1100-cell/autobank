@@ -1,6 +1,6 @@
     -- ==================== AUTO BANK MODULE ====================
-    -- Chức năng: Tự động bỏ vũ khí và pet có giá trị vào Bankz
-    -- Requirements: WindUI, global variables from main scriptxxxx
+    -- Chức năng: Tự động bỏ vũ khí và pet có giá trị vào Bank
+    -- Requirements: WindUI, global variables from main script
     -- ===========================================================
 
     local Module = {}
@@ -72,7 +72,18 @@
     -- ==================== BANK FUNCTIONS ====================
     -- Lấy thông tin bank capacity (đếm trực tiếp từ Profile.Bank.Items)
     local function getBankInfo()
-        local maxCapacity = 120 -- Default max capacity
+        local maxCapacity = 120 -- Default fallback
+        
+        -- Lấy max capacity từ Profile.Bank.Slots
+        if Profile then
+            local bankFolder = Profile:FindFirstChild("Bank")
+            if bankFolder then
+                local slotsValue = bankFolder:FindFirstChild("Slots")
+                if slotsValue and slotsValue.Value then
+                    maxCapacity = tonumber(slotsValue.Value) or 120
+                end
+            end
+        end
         
         -- Đếm số items trong bank từ Profile.Bank.Items
         local currentCount = 0
