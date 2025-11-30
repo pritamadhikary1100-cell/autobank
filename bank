@@ -1,6 +1,6 @@
     -- ==================== AUTO BANK MODULE ====================
     -- Chức năng: Tự động bỏ vũ khí và pet có giá trị vào Bank
-    -- Requirements: WindUI, global variables from main scriptxxxxxxxxxx
+    -- Requirements: WindUI, global variables from main script
     -- ===========================================================
 
     local Module = {}
@@ -17,15 +17,13 @@
 
     -- ==================== GLOBALS ====================
     local BankGlobals = {
-        -- Auto Bank toggles
-        isAutoBankingWeapons = false,
-        isAutoBankingPets = false,
-        isAutoBankingAllWeapons = false, -- Bank tất cả weapons không cần điều kiện
-        isAutoBankingAllPets = false, -- Bank tất cả pets không cần điều kiện
+        -- Auto Bank ALL toggles (không check perk)
+        isAutoBankingAllWeapons = false,
+        isAutoBankingAllPets = false,
         
-        -- Config cho weapons và pets (chỉ lưu min tier)
-        weaponMinTier = 5, -- Tier tối thiểu để bank (mặc định T5)
-        petMinTier = 5, -- Tier tối thiểu để bank (mặc định T5)
+        -- Config cho min tier
+        weaponMinTier = 5,
+        petMinTier = 5,
         
         -- Statistics
         totalWeaponsBanked = 0,
@@ -435,40 +433,51 @@
             BankGlobals.sessionStartTime = tick()
         end
         
-        -- ✅ Listener chung cho cả weapons và pets
+        -- ✅ Listener cho Auto Bank ALL với priority-based delay
         InventoryItems.ChildAdded:Connect(function(item)
-            task.wait(0.1)
-            
             local itemData = bR[item.Name]
             if not itemData then
                 return
             end
             
-            -- Kiểm tra Auto Bank Weapons
+            -- ✅ Đợi Auto Sell/Auto Hatch xử lý trước
+            local shouldWait = false
+            
             if itemData.Type == "Weapon" or itemData.Type == "Armor" then
-                local autoBankAllWeapons = _G.Toggles and _G.Toggles.AutoBankAllWeapons and _G.Toggles.AutoBankAllWeapons.Value or false
-                local autoBankWeapons = _G.Toggles and _G.Toggles.AutoBankWeapons and _G.Toggles.AutoBankWeapons.Value or false
-                
-                if autoBankAllWeapons then
-                    -- Bank tất cả weapons không cần kiểm tra
-                    bankWeapon(item, true)
-                elseif autoBankWeapons then
-                    -- Bank weapons có điều kiện
-                    bankWeapon(item, false)
+                -- Đợi nếu Smart T5 Auto Sell đang BẬT
+                if _G.Toggles and _G.Toggles.smartPerkSell and _G.Toggles.smartPerkSell.Value then
+                    shouldWait = true
+                end
+            elseif itemData.Type == "Pet" then
+                -- Đợi nếu Smart Pet Keep đang BẬT
+                if _G.Toggles and _G.Toggles.SmartPetKeep and _G.Toggles.SmartPetKeep.Value then
+                    shouldWait = true
                 end
             end
             
-            -- Kiểm tra Auto Bank Pets
+            -- Delay dựa trên priority
+            if shouldWait then
+                task.wait(1.5)  -- Đợi Auto Sell/Hatch xử lý xong (1.5s)
+            else
+                task.wait(0.1)  -- Delay ngắn nếu không cần wait
+            end
+            
+            -- ✅ Kiểm tra item còn tồn tại không (có thể đã bị sell)
+            if not item or not item.Parent then
+                return  -- Item đã bị sell/bank rồi
+            end
+            
+            -- Kiểm tra Auto Bank ALL Weapons
+            if itemData.Type == "Weapon" or itemData.Type == "Armor" then
+                if BankGlobals.isAutoBankingAllWeapons then
+                    bankWeapon(item, true)
+                end
+            end
+            
+            -- Kiểm tra Auto Bank ALL Pets
             if itemData.Type == "Pet" then
-                local autoBankAllPets = _G.Toggles and _G.Toggles.AutoBankAllPets and _G.Toggles.AutoBankAllPets.Value or false
-                local autoBankPets = _G.Toggles and _G.Toggles.AutoBankPets and _G.Toggles.AutoBankPets.Value or false
-                
-                if autoBankAllPets then
-                    -- Bank tất cả pets không cần kiểm tra
+                if BankGlobals.isAutoBankingAllPets then
                     bankPet(item, true)
-                elseif autoBankPets then
-                    -- Bank pets có điều kiện
-                    bankPet(item, false)
                 end
             end
         end)
@@ -527,49 +536,22 @@
             end
         end)
         
-        TabInventory:Divider({ Text = "Auto Bank Weapons" })
-        
-        -- Auto Bank Weapons Toggle
-        local AutoBankWeaponsToggle = TabInventory:Toggle({
-            Title = "⚔️ Auto Bank Weapons (Smart)",
-            Description = "Tự động bank weapons đủ điều kiện khi nhận được",
-            Default = false,
-            Callback = function(state)
-                BankGlobals.isAutoBankingWeapons = state
-                
-                if state then
-                    libNoti("✅ Auto Bank Weapons (Smart) đã BẬT - Đang quét inventory...", 2)
-                    
-                    -- ✅ Quét luôn inventory hiện tại
-                    task.spawn(function()
-                        task.wait(0.3)
-                        local weapons = getAllWeaponsInInventory()
-                        local bankedCount = 0
-                        
-                        for _, weapon in ipairs(weapons) do
-                            local success, reason = bankWeapon(weapon, false)
-                            if success then
-                                bankedCount = bankedCount + 1
-                            end
-                            task.wait(0.2)
-                        end
-                        
-                        if bankedCount > 0 then
-                            libNoti(string.format("✅ Đã tự động bank %d weapons từ inventory!", bankedCount), 3)
-                        end
-                    end)
-                else
-                    libNoti("❌ Auto Bank Weapons (Smart) đã TẮT", 2)
-                end
-            end
+        TabInventory:Paragraph({
+            Title = "ℹ️ How Auto Bank Works",
+            Description = [[
+• Use Smart T5 Auto Sell (Auto Sell tab) to keep good weapons
+• Use Smart Pet Keep (Auto Hatch tab) to keep good pets
+• Auto Bank ALL will bank everything remaining in inventory
+• Useful for clearing inventory quickly
+            ]]
         })
-        ConfigSystem.registerUIElement("AutoBankWeapons", AutoBankWeaponsToggle)
-        _G.Toggles.AutoBankWeapons = AutoBankWeaponsToggle
+        
+        TabInventory:Divider({ Text = "Auto Bank ALL" })
         
         -- Weapon Min Tier Slider
         local WeaponMinTierSlider = TabInventory:Slider({
             Title = "Weapon Min Tier",
-            Description = "Tier tối thiểu để bank weapon",
+            Description = "Tier tối thiểu để bank (cho Auto Bank ALL)",
             Step = 1,
             Value = {
                 Min = 1,
@@ -582,17 +564,11 @@
         })
         ConfigSystem.registerUIElement("BankWeaponMinTier", WeaponMinTierSlider)
         
-        -- ✅ Paragraph hướng dẫn
-        TabInventory:Paragraph({
-            Title = "ℹ️ Weapon Perk Settings",
-            Description = "Weapon perks sử dụng ngưỡng từ Smart T5 Auto Sell.\nĐể thay đổi, vào tab Auto Sell > Smart T5 Auto Sell."
-        })
-        
         -- Auto Bank All Weapons Toggle
         local AutoBankAllWeaponsToggle = TabInventory:Toggle({
             Title = "⚔️ Auto Bank ALL Weapons",
-            Description = "Bank TẤT CẢ weapons (bỏ qua mọi điều kiện)",
-            Default = false,
+            Description = "Bank TẤT CẢ weapons (bỏ qua perk checking)",
+            Default = BankGlobals.isAutoBankingAllWeapons,
             Callback = function(state)
                 BankGlobals.isAutoBankingAllWeapons = state
                 
@@ -627,47 +603,10 @@
         
         TabInventory:Divider({ Text = "Auto Bank Pets" })
         
-        -- Auto Bank Pets Toggle
-        local AutoBankPetsToggle = TabInventory:Toggle({
-            Title = "🐾 Auto Bank Pets (Smart)",
-            Description = "Tự động bank pets đủ điều kiện khi nhận được",
-            Default = false,
-            Callback = function(state)
-                BankGlobals.isAutoBankingPets = state
-                
-                if state then
-                    libNoti("✅ Auto Bank Pets (Smart) đã BẬT - Đang quét inventory...", 2)
-                    
-                    -- ✅ Quét luôn inventory hiện tại
-                    task.spawn(function()
-                        task.wait(0.3)
-                        local pets = getAllPetsInInventory()
-                        local bankedCount = 0
-                        
-                        for _, pet in ipairs(pets) do
-                            local success, reason = bankPet(pet, false)
-                            if success then
-                                bankedCount = bankedCount + 1
-                            end
-                            task.wait(0.2)
-                        end
-                        
-                        if bankedCount > 0 then
-                            libNoti(string.format("✅ Đã tự động bank %d pets từ inventory!", bankedCount), 3)
-                        end
-                    end)
-                else
-                    libNoti("❌ Auto Bank Pets (Smart) đã TẮT", 2)
-                end
-            end
-        })
-        ConfigSystem.registerUIElement("AutoBankPets", AutoBankPetsToggle)
-        _G.Toggles.AutoBankPets = AutoBankPetsToggle
-        
         -- Pet Min Tier Slider
         local PetMinTierSlider = TabInventory:Slider({
             Title = "Pet Min Tier",
-            Description = "Tier tối thiểu để bank pet",
+            Description = "Tier tối thiểu để bank (cho Auto Bank ALL)",
             Step = 1,
             Value = {
                 Min = 1,
@@ -680,17 +619,11 @@
         })
         ConfigSystem.registerUIElement("BankPetMinTier", PetMinTierSlider)
         
-        -- ✅ Paragraph hướng dẫn
-        TabInventory:Paragraph({
-            Title = "ℹ️ Pet Perk Settings",
-            Description = "Pet perks sử dụng ngưỡng từ Auto Hatch tab.\nĐể thay đổi, vào tab Auto Hatch > Smart Pet Keep Thresholds."
-        })
-        
         -- Auto Bank All Pets Toggle
         local AutoBankAllPetsToggle = TabInventory:Toggle({
             Title = "🐾 Auto Bank ALL Pets",
-            Description = "Bank TẤT CẢ pets (bỏ qua mọi điều kiện)",
-            Default = false,
+            Description = "Bank TẤT CẢ pets (bỏ qua perk checking)",
+            Default = BankGlobals.isAutoBankingAllPets,
             Callback = function(state)
                 BankGlobals.isAutoBankingAllPets = state
                 
@@ -722,56 +655,6 @@
         })
         ConfigSystem.registerUIElement("AutoBankAllPets", AutoBankAllPetsToggle)
         _G.Toggles.AutoBankAllPets = AutoBankAllPetsToggle
-        
-        TabInventory:Divider({ Text = "Manual Actions" })
-        
-        -- Button Bank All Weapons
-        TabInventory:Button({
-            Title = "⚔️ Bank All Qualifying Weapons",
-            Description = "Bank tất cả weapons đủ điều kiện (double-click)",
-            Callback = function()
-                local weapons = getAllWeaponsInInventory()
-                local bankedCount = 0
-                
-                for _, weapon in ipairs(weapons) do
-                    local success, reason = bankWeapon(weapon, false)
-                    if success then
-                        bankedCount = bankedCount + 1
-                        task.wait(0.2)
-                    end
-                end
-                
-                if bankedCount > 0 then
-                    libNoti(string.format("✅ Đã bank %d weapons!", bankedCount), 3)
-                else
-                    libNoti("⚠️ Không có weapon nào đủ điều kiện để bank", 3)
-                end
-            end
-        })
-        
-        -- Button Bank All Pets
-        TabInventory:Button({
-            Title = "🐾 Bank All Qualifying Pets",
-            Description = "Bank tất cả pets đủ điều kiện (double-click)",
-            Callback = function()
-                local pets = getAllPetsInInventory()
-                local bankedCount = 0
-                
-                for _, pet in ipairs(pets) do
-                    local success, reason = bankPet(pet, false)
-                    if success then
-                        bankedCount = bankedCount + 1
-                        task.wait(0.2)
-                    end
-                end
-                
-                if bankedCount > 0 then
-                    libNoti(string.format("✅ Đã bank %d pets!", bankedCount), 3)
-                else
-                    libNoti("⚠️ Không có pet nào đủ điều kiện để bank", 3)
-                end
-            end
-        })
         
         TabInventory:Divider({ Text = "Withdraw from Bank" })
         
@@ -934,15 +817,17 @@
         -- Start auto bank listeners
         startAutoBank()
         
-        -- ✅ Hook vào ConfigSystem để save/load BankGlobals (chỉ min tiers)
+        -- ✅ Hook vào ConfigSystem để save/load BankGlobals
         local originalGetConfigData = ConfigSystem.getConfigData
         ConfigSystem.getConfigData = function()
             local data = originalGetConfigData()
             
-            -- Chỉ lưu min tiers (perk thresholds lấy từ Options và HatchGlobals)
+            -- Lưu min tiers và Auto Bank ALL toggle states
             data.BankGlobals = {
                 weaponMinTier = BankGlobals.weaponMinTier,
-                petMinTier = BankGlobals.petMinTier
+                petMinTier = BankGlobals.petMinTier,
+                isAutoBankingAllWeapons = BankGlobals.isAutoBankingAllWeapons,
+                isAutoBankingAllPets = BankGlobals.isAutoBankingAllPets
             }
             
             return data
@@ -966,6 +851,15 @@
                 
                 if data.BankGlobals.petMinTier then
                     BankGlobals.petMinTier = tonumber(data.BankGlobals.petMinTier) or 5
+                end
+                
+                -- ✅ Load Auto Bank ALL toggle states
+                if data.BankGlobals.isAutoBankingAllWeapons ~= nil then
+                    BankGlobals.isAutoBankingAllWeapons = data.BankGlobals.isAutoBankingAllWeapons
+                end
+                
+                if data.BankGlobals.isAutoBankingAllPets ~= nil then
+                    BankGlobals.isAutoBankingAllPets = data.BankGlobals.isAutoBankingAllPets
                 end
                 
                 -- Update UI sliders
