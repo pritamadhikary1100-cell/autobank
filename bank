@@ -1,5 +1,5 @@
     -- ==================== AUTO BANK MODULE ====================
-    -- Chức năng: Tự động bỏ vũ khí và pet có giá trị vào Bank
+    -- Chức năng: Tự động bỏ vũ khí và pet có giá trị vào Bankx
     -- Requirements: WindUI, global variables from main script
     -- ===========================================================
 
@@ -572,6 +572,11 @@
             Callback = function(state)
                 BankGlobals.isAutoBankingAllWeapons = state
                 
+                -- ✅ Cập nhật wrapper Toggles
+                if Toggles and Toggles.AutoBankAllWeapons then
+                    Toggles.AutoBankAllWeapons:SetValue(state)
+                end
+                
                 if state then
                     libNoti("⚠️ Auto Bank ALL Weapons đã BẬT - Đang bank toàn bộ inventory...", 3)
                     
@@ -599,7 +604,21 @@
             end
         })
         ConfigSystem.registerUIElement("AutoBankAllWeapons", AutoBankAllWeaponsToggle)
-        _G.Toggles.AutoBankAllWeapons = AutoBankAllWeaponsToggle
+        
+        -- ✅ Register vào Toggles wrapper (QUAN TRỌNG!)
+        if not Toggles.AutoBankAllWeapons then
+            Toggles.AutoBankAllWeapons = {
+                Value = BankGlobals.isAutoBankingAllWeapons,
+                SetValue = function(self, newValue)
+                    BankGlobals.isAutoBankingAllWeapons = newValue
+                    self.Value = newValue
+                    -- Cập nhật UI
+                    if AutoBankAllWeaponsToggle and AutoBankAllWeaponsToggle.SetValue then
+                        AutoBankAllWeaponsToggle:SetValue(newValue)
+                    end
+                end
+            }
+        end
         
         TabInventory:Divider({ Text = "Auto Bank Pets" })
         
@@ -626,6 +645,11 @@
             Default = BankGlobals.isAutoBankingAllPets,
             Callback = function(state)
                 BankGlobals.isAutoBankingAllPets = state
+                
+                -- ✅ Cập nhật wrapper Toggles
+                if Toggles and Toggles.AutoBankAllPets then
+                    Toggles.AutoBankAllPets:SetValue(state)
+                end
                 
                 if state then
                     libNoti("⚠️ Auto Bank ALL Pets đã BẬT - Đang bank toàn bộ inventory...", 3)
@@ -654,7 +678,21 @@
             end
         })
         ConfigSystem.registerUIElement("AutoBankAllPets", AutoBankAllPetsToggle)
-        _G.Toggles.AutoBankAllPets = AutoBankAllPetsToggle
+        
+        -- ✅ Register vào Toggles wrapper (QUAN TRỌNG!)
+        if not Toggles.AutoBankAllPets then
+            Toggles.AutoBankAllPets = {
+                Value = BankGlobals.isAutoBankingAllPets,
+                SetValue = function(self, newValue)
+                    BankGlobals.isAutoBankingAllPets = newValue
+                    self.Value = newValue
+                    -- Cập nhật UI
+                    if AutoBankAllPetsToggle and AutoBankAllPetsToggle.SetValue then
+                        AutoBankAllPetsToggle:SetValue(newValue)
+                    end
+                end
+            }
+        end
         
         TabInventory:Divider({ Text = "Withdraw from Bank" })
         
