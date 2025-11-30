@@ -1,6 +1,6 @@
     -- ==================== AUTO BANK MODULE ====================
     -- Chức năng: Tự động bỏ vũ khí và pet có giá trị vào Bank
-    -- Requirements: WindUI, global variables from main scriptxxxxxxxxxxxx
+    -- Requirements: WindUI, global variables from main script
     -- ===========================================================
 
     local Module = {}
@@ -882,16 +882,16 @@
                         end)
                     end
                     
-                    -- ✅ THÊM: Update toggles
-                    if _G.Toggles.AutoBankAllWeapons then
+                    -- ✅ THÊM: Update toggles (giống cách anya.lua load config)
+                    if ConfigSystem.UIElements["AutoBankAllWeapons"] then
                         pcall(function()
-                            _G.Toggles.AutoBankAllWeapons:SetValue(BankGlobals.isAutoBankingAllWeapons)
+                            ConfigSystem.UIElements["AutoBankAllWeapons"]:SetValue(BankGlobals.isAutoBankingAllWeapons)
                         end)
                     end
                     
-                    if _G.Toggles.AutoBankAllPets then
+                    if ConfigSystem.UIElements["AutoBankAllPets"] then
                         pcall(function()
-                            _G.Toggles.AutoBankAllPets:SetValue(BankGlobals.isAutoBankingAllPets)
+                            ConfigSystem.UIElements["AutoBankAllPets"]:SetValue(BankGlobals.isAutoBankingAllPets)
                         end)
                     end
                 end)
