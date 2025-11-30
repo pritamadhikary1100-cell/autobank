@@ -1,6 +1,6 @@
     -- ==================== AUTO BANK MODULE ====================
-    -- Chức năng: Tự động bỏ vũ khí và pet có giá trị vào Bank
-    -- Requirements: WindUI, global variables from main script
+    -- Chức năng: Tự động bỏ vũ khí và pet có giá trị vào Bankz
+    -- Requirements: WindUI, global variables from main scriptxxxx
     -- ===========================================================
 
     local Module = {}
@@ -13,7 +13,7 @@
     local Players = game:GetService("Players")
     local c, d, e, bQ, bR
     local ReplicatedStorage, Shared, Bank, TransferToBank, WithdrawFromBank
-    local PlayerGui, Profile, InventoryItems, BankGui, BankItems, BankCounter
+    local PlayerGui, Profile, InventoryItems
 
     -- ==================== GLOBALS ====================
     local BankGlobals = {
@@ -70,29 +70,23 @@
     end
 
     -- ==================== BANK FUNCTIONS ====================
-    -- Lấy thông tin bank capacity (18/50)
+    -- Lấy thông tin bank capacity (đếm trực tiếp từ Profile.Bank.Items)
     local function getBankInfo()
-        if not BankCounter then
-            -- Thử tìm lại BankCounter nếu chưa có
-            if PlayerGui then
-                local bankGui = PlayerGui:FindFirstChild("Bank")
-                if bankGui then
-                    local bankItems = bankGui:FindFirstChild("Bank") and bankGui.Bank:FindFirstChild("BankItems")
-                    if bankItems then
-                        BankCounter = bankItems:FindFirstChild("Counter")
-                    end
+        local maxCapacity = 120 -- Default max capacity
+        
+        -- Đếm số items trong bank từ Profile.Bank.Items
+        local currentCount = 0
+        if Profile then
+            local bankFolder = Profile:FindFirstChild("Bank")
+            if bankFolder then
+                local itemsFolder = bankFolder:FindFirstChild("Items")
+                if itemsFolder then
+                    currentCount = #itemsFolder:GetChildren()
                 end
             end
         end
         
-        if not BankCounter or not BankCounter.Value then
-            return 0, 50 -- Default values
-        end
-        
-        local counterText = BankCounter.Value
-        local current, max = string.match(counterText, "(%d+)/(%d+)")
-        
-        return tonumber(current) or 0, tonumber(max) or 50
+        return currentCount, maxCapacity
     end
 
     -- Kiểm tra xem bank có đầy không
@@ -907,20 +901,6 @@
         PlayerGui = c:WaitForChild("PlayerGui")
         Profile = PlayerGui:WaitForChild("Profile")
         InventoryItems = Profile:WaitForChild("Inventory"):WaitForChild("Items")
-        
-        local bankGuiSuccess, bankGuiResult = pcall(function()
-            return PlayerGui:WaitForChild("Bank", 5)
-        end)
-        
-        if not bankGuiSuccess or not bankGuiResult then
-            BankGui = nil
-            BankItems = nil
-            BankCounter = nil
-        else
-            BankGui = bankGuiResult
-            BankItems = BankGui:FindFirstChild("Bank") and BankGui.Bank:FindFirstChild("BankItems")
-            BankCounter = BankItems and BankItems:FindFirstChild("Counter")
-        end
         
         -- ✅ Set config file name
         BankGlobals.ConfigFile = "AnyaHub_BankConfig_" .. c.Name .. ".txt"
