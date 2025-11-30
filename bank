@@ -1,4 +1,4 @@
-    -- ==================== AUTO BANK MODULE ====================d
+    -- ==================== AUTO BANK MODULE ====================
     -- Chức năng: Tự động bỏ vũ khí và pet có giá trị vào Bank
     -- Requirements: WindUI, global variables from main script
     -- ===========================================================
@@ -524,7 +524,26 @@
                 BankGlobals.isAutoBankingWeapons = state
                 
                 if state then
-                    libNoti("✅ Auto Bank Weapons (Smart) đã BẬT", 2)
+                    libNoti("✅ Auto Bank Weapons (Smart) đã BẬT - Đang quét inventory...", 2)
+                    
+                    -- ✅ Quét luôn inventory hiện tại
+                    task.spawn(function()
+                        task.wait(0.3)
+                        local weapons = getAllWeaponsInInventory()
+                        local bankedCount = 0
+                        
+                        for _, weapon in ipairs(weapons) do
+                            local success, reason = bankWeapon(weapon, false)
+                            if success then
+                                bankedCount = bankedCount + 1
+                            end
+                            task.wait(0.2)
+                        end
+                        
+                        if bankedCount > 0 then
+                            libNoti(string.format("✅ Đã tự động bank %d weapons từ inventory!", bankedCount), 3)
+                        end
+                    end)
                 else
                     libNoti("❌ Auto Bank Weapons (Smart) đã TẮT", 2)
                 end
@@ -564,7 +583,26 @@
                 BankGlobals.isAutoBankingAllWeapons = state
                 
                 if state then
-                    libNoti("⚠️ Auto Bank ALL Weapons đã BẬT - Mọi weapon sẽ được bank!", 3)
+                    libNoti("⚠️ Auto Bank ALL Weapons đã BẬT - Đang bank toàn bộ inventory...", 3)
+                    
+                    -- ✅ Quét luôn inventory hiện tại (bank all)
+                    task.spawn(function()
+                        task.wait(0.3)
+                        local weapons = getAllWeaponsInInventory()
+                        local bankedCount = 0
+                        
+                        for _, weapon in ipairs(weapons) do
+                            local success, reason = bankWeapon(weapon, true)
+                            if success then
+                                bankedCount = bankedCount + 1
+                            end
+                            task.wait(0.2)
+                        end
+                        
+                        if bankedCount > 0 then
+                            libNoti(string.format("✅ Đã bank toàn bộ %d weapons!", bankedCount), 3)
+                        end
+                    end)
                 else
                     libNoti("❌ Auto Bank ALL Weapons đã TẮT", 2)
                 end
@@ -584,7 +622,26 @@
                 BankGlobals.isAutoBankingPets = state
                 
                 if state then
-                    libNoti("✅ Auto Bank Pets (Smart) đã BẬT", 2)
+                    libNoti("✅ Auto Bank Pets (Smart) đã BẬT - Đang quét inventory...", 2)
+                    
+                    -- ✅ Quét luôn inventory hiện tại
+                    task.spawn(function()
+                        task.wait(0.3)
+                        local pets = getAllPetsInInventory()
+                        local bankedCount = 0
+                        
+                        for _, pet in ipairs(pets) do
+                            local success, reason = bankPet(pet, false)
+                            if success then
+                                bankedCount = bankedCount + 1
+                            end
+                            task.wait(0.2)
+                        end
+                        
+                        if bankedCount > 0 then
+                            libNoti(string.format("✅ Đã tự động bank %d pets từ inventory!", bankedCount), 3)
+                        end
+                    end)
                 else
                     libNoti("❌ Auto Bank Pets (Smart) đã TẮT", 2)
                 end
@@ -624,7 +681,26 @@
                 BankGlobals.isAutoBankingAllPets = state
                 
                 if state then
-                    libNoti("⚠️ Auto Bank ALL Pets đã BẬT - Mọi pet sẽ được bank!", 3)
+                    libNoti("⚠️ Auto Bank ALL Pets đã BẬT - Đang bank toàn bộ inventory...", 3)
+                    
+                    -- ✅ Quét luôn inventory hiện tại (bank all)
+                    task.spawn(function()
+                        task.wait(0.3)
+                        local pets = getAllPetsInInventory()
+                        local bankedCount = 0
+                        
+                        for _, pet in ipairs(pets) do
+                            local success, reason = bankPet(pet, true)
+                            if success then
+                                bankedCount = bankedCount + 1
+                            end
+                            task.wait(0.2)
+                        end
+                        
+                        if bankedCount > 0 then
+                            libNoti(string.format("✅ Đã bank toàn bộ %d pets!", bankedCount), 3)
+                        end
+                    end)
                 else
                     libNoti("❌ Auto Bank ALL Pets đã TẮT", 2)
                 end
