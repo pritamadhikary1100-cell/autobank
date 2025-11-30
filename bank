@@ -1,6 +1,6 @@
     -- ==================== AUTO BANK MODULE ====================
     -- Chức năng: Tự động bỏ vũ khí và pet có giá trị vào Bank
-    -- Requirements: WindUI, global variables from main script
+    -- Requirements: WindUI, global variables from main scriptxxxxxxxxxx
     -- ===========================================================
 
     local Module = {}
@@ -188,9 +188,13 @@
                         hasValidPerk = true
                         
                         -- ✅ Lấy threshold từ Options (giống smartPerkSell)
-                        local threshold = 999
+                        local threshold = 0
                         if _G.Options and _G.Options[perkName] then
-                            threshold = tonumber(_G.Options[perkName].Value) or 999
+                            local optionValue = tonumber(_G.Options[perkName].Value) or 999
+                            -- Chỉ áp dụng threshold nếu đã được config (< 999)
+                            if optionValue < 999 then
+                                threshold = optionValue
+                            end
                         end
                         
                         local perkPercent = math.round(perkValue * 100)
@@ -342,7 +346,12 @@
                         hasValidPerk = true
                         
                         -- ✅ Lấy threshold từ petPerkThresholds (giống Auto Hatch)
-                        local threshold = petPerkThresholds[perkName] or 999
+                        local threshold = 0
+                        local configThreshold = petPerkThresholds[perkName] or 999
+                        -- Chỉ áp dụng threshold nếu đã được config (< 999)
+                        if configThreshold < 999 then
+                            threshold = configThreshold
+                        end
                         
                         local perkPercent = math.round(perkValue * 100)
                         local meetsThreshold = perkPercent >= threshold
@@ -950,13 +959,13 @@
             _G.ConfigSystem.lastLoadedConfig = data
             
             if data and data.BankGlobals then
-                -- Load min tiers
+                -- Load min tiers (parse to number nếu là string)
                 if data.BankGlobals.weaponMinTier then
-                    BankGlobals.weaponMinTier = data.BankGlobals.weaponMinTier
+                    BankGlobals.weaponMinTier = tonumber(data.BankGlobals.weaponMinTier) or 5
                 end
                 
                 if data.BankGlobals.petMinTier then
-                    BankGlobals.petMinTier = data.BankGlobals.petMinTier
+                    BankGlobals.petMinTier = tonumber(data.BankGlobals.petMinTier) or 5
                 end
                 
                 -- Update UI sliders
