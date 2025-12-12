@@ -1,5 +1,5 @@
     -- ==================== AUTO BANK MODULE ====================
-    -- Chức năng: Tự động bỏ vũ khí và pet có giá trị vào Bankx
+    -- Chức năng: Tự động bỏ vũ khí và pet có giá trị vào Bankxxxxxxx
     -- Requirements: WindUI, global variables from main script
     -- ===========================================================
 
@@ -176,7 +176,7 @@
                 local perkName = child.Value
                 local perkValue = child.PerkValue.Value
                 
-                local perkData = bQ[perkName]
+                local perkData = bQ and bQ[perkName]
                 
                 if perkData then
                     local canAppearOnWeapon = not perkData.ArmorOnly and not perkData.PetOnly
@@ -334,7 +334,7 @@
                 local perkName = child.Value
                 local perkValue = child.PerkValue.Value
                 
-                local perkData = bQ[perkName]
+                local perkData = bQ and bQ[perkName]
                 
                 if perkData then
                     local canAppearOnPet = (not perkData.WeaponOnly and not perkData.ArmorOnly) or perkData.PetOnly
